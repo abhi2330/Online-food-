@@ -1,31 +1,63 @@
+
 pipeline {
     agent any
 
     stages {
-        stage('Clone Repo') {
+        stage('Code') {
             steps {
-                git 'https://github.com/abhi2330/Online-food-.git'
+                git url: 'https://github.com/abhi2330/Online-food-.git',
+                    branch: 'main'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build') {
             steps {
-                sh 'docker build -t devops-food-app .'
+                echo 'Building application...'
+                sh 'docker build -t online-food:latest .'
             }
         }
 
-        stage('Stop Old Container') {
+        stage('Test') {
             steps {
+                echo 'Testing Docker image...'
+                sh 'docker image inspect online-food:latest'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'JenkinsCred',
+                    usernameVariable: 'dockerHubUser',
+                    passwordVariable: 'dockerHubPass'
+                )]) {
+                    sh '''
+                        echo "$dockerHubPass" | docker login \
+                            -u "$dockerHubUser" --password-stdin
+
+                        docker image tag online-food:latest \
+                            "$dockerHubUser/online-food:latest"
+
+                        docker push "$dockerHubUser/online-food:latest"
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying application...'
                 sh '''
-                docker stop food || true
-                docker rm food || true
-                '''
-            }
-        }
+                    docker rm -f online-food || true
 
-        stage('Run Container') {
-            steps {
-                sh 'docker run -d -p 80:80 --name food devops-food-app'
+                    docker run -d \
+                        --name online-food \
+                        --restart unless-stopped \
+                        -p 8081:80 \
+                        online-food:latest
+                '''
             }
         }
     }
